@@ -2,11 +2,7 @@ import cv2
 
 def decode(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    #cv2.imwrite("gray.jpg",gray)
-    ret, thresh =cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    #ret, thresh =cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY)
-    #cv2.imwrite("thresh.jpg",thresh)
-    thresh = cv2.bitwise_not(thresh)
+    ret, thresh =cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU) #bináris kép
     ean13 = None
     is_valid = None
     #scan lines
@@ -14,8 +10,6 @@ def decode(img):
         try:
             ean13, is_valid = decode_line(thresh[i])
         except Exception as e:
-            #print(e)
-            #print("failed")
             pass
         if is_valid:
             break
@@ -24,13 +18,18 @@ def decode(img):
 
 def decode_line(line):
     bars = read_bars(line)
-    left_guard, left_patterns, center_guard, right_patterns, right_guard = classify_bars(bars)
+    left_guard, left_patterns, center_guard, right_patterns, right_guard = classify_bars(bars)#barcode felosztása, mindig 0 indul
+    #print(left_patterns)
+    #hossz számítások
     convert_patterns_to_length(left_patterns)
     convert_patterns_to_length(right_patterns)
+    #print(left_patterns)
     left_codes = read_patterns(left_patterns,is_left=True)
+    #print(left_codes)
     right_codes = read_patterns(right_patterns,is_left=False)
     ean13 = get_ean13(left_codes,right_codes)
-    print("Detected code: "+ ean13)
+#    print("Detected code: "+ ean13)
+
     is_valid = verify(ean13)
     return ean13, is_valid
             
@@ -39,21 +38,27 @@ def convert_patterns_to_length(patterns):
         patterns[i] = len(patterns[i])
 
 def read_patterns(patterns,is_left=True):
-    #print(len(patterns))
     codes = []
     for i in range(6):
         start_index = i*4
+        #print(start_index)
         sliced = patterns[start_index:start_index+4]
+        #print(patterns)
         #print(sliced)
         m1 = sliced[0]
         m2 = sliced[1]
         m3 = sliced[2]
         m4 = sliced[3]
         total = m1+m2+m3+m4;
+        #print(total)
         tmp1=(m1+m2)*1.0;
         tmp2=(m2+m3)*1.0;
+        #print(tmp1)
+        #print(tmp2)
         at1 = get_AT(tmp1/total)
         at2 = get_AT(tmp2/total)
+        #print(at1)
+        #print(at2)
         if is_left:
             decoded = decode_left(at1,at2,m1,m2,m3,m4)
         else:
@@ -137,9 +142,9 @@ def decode_right(at1, at2, m1, m2, m3, m4):
         code = pattern_dict["code"]
     final = {"code": code}
     return final
-    
+
 def read_bars(line):
-    replace_255_to_1(line)
+    replace_255_to_1(line) #(0,1)
     bars = []
     current_length = 1
     for i in range(len(line)-1):
@@ -150,10 +155,10 @@ def read_bars(line):
             current_length = 1
     #remove quite zone
     bars.pop(0)
-    #print(len(bars))
     return bars
     
 def classify_bars(bars):
+    #kód részekre bontása
     left_guard = bars[0:3]
     left_patterns = bars[3:27]
     center_guard = bars[27:32]
@@ -165,7 +170,11 @@ def verify(ean13):
     weight = [1,3,1,3,1,3,1,3,1,3,1,3,1,3]
     weighted_sum = 0
     for i in range(12):
-        weighted_sum = weighted_sum + weight[i] * int(ean13[i])
+        weighted_sum = weighted_sum + weight[i] * int(ean13[i])#szorzás 1 és 3
+        # print(ean13[i])
+        # print(ean13)
+        # print("szum")
+        # print(weighted_sum)
     weighted_sum = str(weighted_sum)
     checksum = 0
     units_digit = int(weighted_sum[-1])
@@ -184,6 +193,7 @@ def verify(ean13):
 def get_ean13(left_codes,right_codes):
     ean13 = ""
     ean13 = ean13 + str(get_first_digit(left_codes))
+#    print(ean13)
     for code in left_codes:
         ean13 = ean13 + str(code["code"])
     for code in right_codes:
@@ -196,6 +206,7 @@ def replace_255_to_1(array):
             array[i] = 1
 
 def get_first_digit(left_codes):
+    #elso szam meghatarozasa
     parity_dict = {}
     parity_dict["OOOOOO"] = 0
     parity_dict["OOEOEE"] = 1
@@ -211,13 +222,4 @@ def get_first_digit(left_codes):
     for code in left_codes:
         parity = parity + code["parity"]
     return parity_dict[parity]
-    
-
-if __name__ == "__main__":
-    img = cv2.imread("vonalkod-nyito-1.jpg")
-    #img = cv2.imread("WebTWAINImage.bmp")
-    ean13, is_valid, thresh = decode(img)
-    cv2.imshow("title", thresh);
-    cv2.waitKey(0);
-    cv2.destroyAllWindows();
 
